@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+// Auth middleware
 const auth = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -45,7 +46,7 @@ const auth = async (req, res, next) => {
   }
 };
 
-// Middleware to check if user is a specific type
+// Middleware to check user type (role-based access)
 const requireUserType = (userType) => {
   return (req, res, next) => {
     if (req.user.userType !== userType) {

@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
+const path = require("path");
 
 dotenv.config(); 
 
@@ -14,14 +15,19 @@ app.use(cors({
   credentials: true
 }));
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Routes
 const authRoutes = require('./routes/auth');
 const buyerRoutes = require('./routes/buyer');
 const sellerRoutes = require('./routes/seller');
+const categoryRoutes = require('./routes/categories');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/buyer', buyerRoutes);
 app.use('/api/seller', sellerRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Simple route
 app.get("/", (req, res) => {
