@@ -23,11 +23,17 @@ const authRoutes = require('./routes/auth');
 const buyerRoutes = require('./routes/buyer');
 const sellerRoutes = require('./routes/seller');
 const categoryRoutes = require('./routes/categories');
+const orderRoutes = require('./routes/orderRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/buyer', buyerRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Simple route
 app.get("/", (req, res) => {
