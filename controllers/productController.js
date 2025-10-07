@@ -1,466 +1,145 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const path = require('path');
-const fs = require('fs');
 
 // Get all products for a seller
 const getSellerProducts = async (req, res) => {
   try {
     const { page = 1, limit = 10, category, status, search } = req.query;
-    const query = { seller: req.user.id };
+    const skip = (page - 1) * limit;
 
-    if (category) query.category = category;
-    if (status) {
-      if (status === 'active') query.isActive = true;
-      if (status === 'inactive') query.isActive = false;
+    let query = { seller: req.user._id };
+
+    if (category) {
+      query.category = category;
     }
+
+    if (status) {
+      query.status = status;
+    }
+
     if (search) {
-      query.$text = { $search: search };
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
     }
 
     const products = await Product.find(query)
-      .populate('category', 'name')
+      .populate('category', 'name icon color')
       .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .skip(skip)
+      .limit(parseInt(limit));
 
     const total = await Product.countDocuments(query);
 
     res.json({
       success: true,
-      products,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      data: {
+        products,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total,
+          limit: parseInt(limit)
+        }
+      },
+      message: 'Products retrieved successfully'
     });
   } catch (error) {
-    console.error('Error fetching seller products:', error);
+    console.error('Get seller products error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching products'
+      message: 'Server error while fetching products'
     });
   }
 };
 
-// Get all products for buyers (public)
-const getProducts = async (req, res) => {
+// Get all public products (for buyers)
+const getPublicProducts = async (req, res) => {
   try {
     const { 
       page = 1, 
       limit = 12, 
       category, 
+      seller, 
       search, 
       minPrice, 
-      maxPrice, 
+      maxPrice,
+      organic,
+      featured,
       sortBy = 'createdAt',
-      sortOrder = 'desc',
-      featured
+      sortOrder = 'desc'
     } = req.query;
+    
+    const skip = (page - 1) * limit;
 
-    const query = { isActive: true };
+    let query = { 
+      isActive: true, 
+      status: 'active',
+      stock: { $gt: 0 }
+    };
 
-    if (category) query.category = category;
-    if (featured === 'true') query.isFeatured = true;
-    if (search) {
-      query.$text = { $search: search };
+    if (category) {
+      query.category = category;
     }
+
+    if (seller) {
+      query.seller = seller;
+    }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
+    }
+
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = parseFloat(minPrice);
       if (maxPrice) query.price.$lte = parseFloat(maxPrice);
     }
 
-    const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    if (organic !== undefined) {
+      query.organic = organic === 'true';
+    }
+
+    if (featured !== undefined) {
+      query.isFeatured = featured === 'true';
+    }
+
+    let sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const products = await Product.find(query)
-      .populate('category', 'name')
-      .populate('seller', 'username farmLocation')
-      .sort(sortOptions)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .populate('category', 'name icon color')
+      .populate('seller', 'firstName lastName farmName city')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
 
     const total = await Product.countDocuments(query);
 
     res.json({
       success: true,
-      products,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching products'
-    });
-  }
-};
-
-// Get single product
-const getProduct = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id)
-      .populate('category', 'name description')
-      .populate('seller', 'username farmLocation');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    // Increment views if not the seller viewing their own product
-    if (!req.user || req.user.id !== product.seller._id.toString()) {
-      await product.incrementViews();
-    }
-
-    res.json({
-      success: true,
-      product
-    });
-  } catch (error) {
-    console.error('Error fetching product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product'
-    });
-  }
-};
-
-// Create new product
-const createProduct = async (req, res) => {
-  try {
-    const {
-      name,
-      description,
-      price,
-      originalPrice,
-      unit,
-      stock,
-      minOrderQuantity,
-      maxOrderQuantity,
-      category,
-      tags,
-      harvestDate,
-      expiryDate,
-      farmLocation,
-      isOrganic,
-      isFeatured,
-      nutritionInfo
-    } = req.body;
-
-    // Validate category exists and belongs to seller
-    const categoryDoc = await Category.findOne({
-      _id: category,
-      seller: req.user.id,
-      isActive: true
-    });
-
-    if (!categoryDoc) {
-      // Delete uploaded files if category validation fails
-      if (req.files) {
-        req.files.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid category selected'
-      });
-    }
-
-    // Process uploaded images
-    const images = req.files ? req.files.map(file => `/uploads/products/${file.filename}`) : [];
-
-    if (images.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'At least one product image is required'
-      });
-    }
-
-    const productData = {
-      name: name.trim(),
-      description: description.trim(),
-      price: parseFloat(price),
-      unit,
-      stock: parseInt(stock),
-      category,
-      seller: req.user.id,
-      images
-    };
-
-    // Optional fields
-    if (originalPrice) productData.originalPrice = parseFloat(originalPrice);
-    if (minOrderQuantity) productData.minOrderQuantity = parseInt(minOrderQuantity);
-    if (maxOrderQuantity) productData.maxOrderQuantity = parseInt(maxOrderQuantity);
-    if (tags) productData.tags = JSON.parse(tags);
-    if (harvestDate) productData.harvestDate = new Date(harvestDate);
-    if (expiryDate) productData.expiryDate = new Date(expiryDate);
-    if (farmLocation) productData.farmLocation = farmLocation.trim();
-    if (isOrganic !== undefined) productData.isOrganic = isOrganic === 'true';
-    if (isFeatured !== undefined) productData.isFeatured = isFeatured === 'true';
-    if (nutritionInfo) productData.nutritionInfo = JSON.parse(nutritionInfo);
-
-    const product = new Product(productData);
-    await product.save();
-
-    // Populate the response
-    await product.populate('category', 'name');
-
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      product
-    });
-  } catch (error) {
-    console.error('Error creating product:', error);
-    
-    // Delete uploaded files if error occurs
-    if (req.files) {
-      req.files.forEach(file => {
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (deleteError) {
-          console.error('Error deleting uploaded file:', deleteError);
+      data: {
+        products,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total,
+          limit: parseInt(limit)
         }
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Error creating product'
-    });
-  }
-};
-
-// Update product
-const updateProduct = async (req, res) => {
-  try {
-    const productId = req.params.id;
-    const product = await Product.findOne({
-      _id: productId,
-      seller: req.user.id
-    });
-
-    if (!product) {
-      // Delete uploaded files if product not found
-      if (req.files) {
-        req.files.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        });
-      }
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    const {
-      name,
-      description,
-      price,
-      originalPrice,
-      unit,
-      stock,
-      minOrderQuantity,
-      maxOrderQuantity,
-      category,
-      tags,
-      harvestDate,
-      expiryDate,
-      farmLocation,
-      isOrganic,
-      isFeatured,
-      isActive,
-      nutritionInfo
-    } = req.body;
-
-    // Validate category if changed
-    if (category && category !== product.category.toString()) {
-      const categoryDoc = await Category.findOne({
-        _id: category,
-        seller: req.user.id,
-        isActive: true
-      });
-
-      if (!categoryDoc) {
-        if (req.files) {
-          req.files.forEach(file => {
-            if (fs.existsSync(file.path)) {
-              fs.unlinkSync(file.path);
-            }
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid category selected'
-        });
-      }
-    }
-
-    // Update fields
-    if (name) product.name = name.trim();
-    if (description) product.description = description.trim();
-    if (price) product.price = parseFloat(price);
-    if (originalPrice !== undefined) product.originalPrice = originalPrice ? parseFloat(originalPrice) : null;
-    if (unit) product.unit = unit;
-    if (stock !== undefined) product.stock = parseInt(stock);
-    if (minOrderQuantity) product.minOrderQuantity = parseInt(minOrderQuantity);
-    if (maxOrderQuantity) product.maxOrderQuantity = parseInt(maxOrderQuantity);
-    if (category) product.category = category;
-    if (tags) product.tags = JSON.parse(tags);
-    if (harvestDate) product.harvestDate = new Date(harvestDate);
-    if (expiryDate) product.expiryDate = new Date(expiryDate);
-    if (farmLocation) product.farmLocation = farmLocation.trim();
-    if (isOrganic !== undefined) product.isOrganic = isOrganic === 'true';
-    if (isFeatured !== undefined) product.isFeatured = isFeatured === 'true';
-    if (isActive !== undefined) product.isActive = isActive === 'true';
-    if (nutritionInfo) product.nutritionInfo = JSON.parse(nutritionInfo);
-
-    // Handle image updates
-    if (req.files && req.files.length > 0) {
-      // Delete old images
-      product.images.forEach(imagePath => {
-        const fullPath = path.join(__dirname, '..', imagePath);
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-        }
-      });
-      
-      // Set new images
-      product.images = req.files.map(file => `/uploads/products/${file.filename}`);
-    }
-
-    await product.save();
-    await product.populate('category', 'name');
-
-    res.json({
-      success: true,
-      message: 'Product updated successfully',
-      product
+      },
+      message: 'Products retrieved successfully'
     });
   } catch (error) {
-    console.error('Error updating product:', error);
-    
-    // Delete uploaded files if error occurs
-    if (req.files) {
-      req.files.forEach(file => {
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (deleteError) {
-          console.error('Error deleting uploaded file:', deleteError);
-        }
-      });
-    }
-
+    console.error('Get public products error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating product'
-    });
-  }
-};
-
-// Delete product
-const deleteProduct = async (req, res) => {
-  try {
-    const product = await Product.findOne({
-      _id: req.params.id,
-      seller: req.user.id
-    });
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    // Delete product images
-    product.images.forEach(imagePath => {
-      const fullPath = path.join(__dirname, '..', imagePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    });
-
-    // Update category product count
-    await Category.findByIdAndUpdate(product.category, { $inc: { productCount: -1 } });
-
-    await Product.findByIdAndDelete(req.params.id);
-
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting product'
-    });
-  }
-};
-
-// Get product statistics for seller
-const getProductStats = async (req, res) => {
-  try {
-    const sellerId = req.user.id;
-    
-    const stats = await Product.aggregate([
-      { $match: { seller: sellerId } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          active: { $sum: { $cond: ['$isActive', 1, 0] } },
-          inactive: { $sum: { $cond: ['$isActive', 0, 1] } },
-          lowStock: { $sum: { $cond: [{ $lte: ['$stock', 5] }, 1, 0] } },
-          outOfStock: { $sum: { $cond: [{ $eq: ['$stock', 0] }, 1, 0] } },
-          totalViews: { $sum: '$totalViews' },
-          totalSold: { $sum: '$totalSold' },
-          averageRating: { $avg: '$rating.average' }
-        }
-      }
-    ]);
-
-    const result = stats[0] || {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      lowStock: 0,
-      outOfStock: 0,
-      totalViews: 0,
-      totalSold: 0,
-      averageRating: 0
-    };
-
-    res.json({
-      success: true,
-      stats: result
-    });
-  } catch (error) {
-    console.error('Error fetching product stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product statistics'
+      message: 'Server error while fetching products'
     });
   }
 };
@@ -469,36 +148,297 @@ const getProductStats = async (req, res) => {
 const getFeaturedProducts = async (req, res) => {
   try {
     const { limit = 8 } = req.query;
-    
-    const products = await Product.find({ 
-      isActive: true, 
-      isFeatured: true 
+
+    const products = await Product.find({
+      isActive: true,
+      status: 'active',
+      isFeatured: true,
+      stock: { $gt: 0 }
     })
-      .populate('category', 'name')
-      .populate('seller', 'username farmLocation')
-      .sort({ totalSold: -1, rating: -1 })
-      .limit(parseInt(limit));
+    .populate('category', 'name icon color')
+    .populate('seller', 'firstName lastName farmName city')
+    .sort({ averageRating: -1, totalOrders: -1 })
+    .limit(parseInt(limit));
 
     res.json({
       success: true,
-      products
+      data: { products },
+      message: 'Featured products retrieved successfully'
     });
   } catch (error) {
-    console.error('Error fetching featured products:', error);
+    console.error('Get featured products error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching featured products'
+      message: 'Server error while fetching featured products'
+    });
+  }
+};
+
+// Get single product
+const getProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findById(id)
+      .populate('category', 'name icon color')
+      .populate('seller', 'firstName lastName farmName city phone');
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { product },
+      message: 'Product retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Get product error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching product'
+    });
+  }
+};
+
+// Create a new product
+const createProduct = async (req, res) => {
+  try {
+    const {
+      name, description, price, unit, stock, minOrder, maxOrder,
+      category, images, organic, fresh, origin, harvestDate,
+      expiryDate, tags, searchKeywords, isFeatured
+    } = req.body;
+
+    // Verify category belongs to seller
+    const categoryDoc = await Category.findOne({
+      _id: category,
+      seller: req.user._id
+    });
+
+    if (!categoryDoc) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category not found or does not belong to you'
+      });
+    }
+
+    const product = new Product({
+      name: name.trim(),
+      description: description?.trim() || '',
+      price: parseFloat(price),
+      unit: unit || 'kg',
+      stock: parseInt(stock) || 0,
+      minOrder: parseInt(minOrder) || 1,
+      maxOrder: parseInt(maxOrder) || 100,
+      category: category,
+      seller: req.user._id,
+      images: images || [],
+      organic: organic || false,
+      fresh: fresh !== undefined ? fresh : true,
+      origin: origin || 'Local',
+      harvestDate: harvestDate ? new Date(harvestDate) : undefined,
+      expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+      tags: tags || [],
+      searchKeywords: searchKeywords || [],
+      isFeatured: isFeatured || false
+    });
+
+    await product.save();
+
+    // Update category product count
+    await Category.findByIdAndUpdate(category, {
+      $inc: { productCount: 1 }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { product },
+      message: 'Product created successfully'
+    });
+  } catch (error) {
+    console.error('Create product error:', error);
+    
+    if (error.name === 'ValidationError') {
+      const field = Object.keys(error.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: error.errors[field].message,
+        field: field
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Server error while creating product'
+    });
+  }
+};
+
+// Update a product
+const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const product = await Product.findOne({
+      _id: id,
+      seller: req.user._id
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // If category is being changed, verify it belongs to seller
+    if (updateData.category && updateData.category !== product.category.toString()) {
+      const categoryDoc = await Category.findOne({
+        _id: updateData.category,
+        seller: req.user._id
+      });
+
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Category not found or does not belong to you'
+        });
+      }
+
+      // Update category product counts
+      await Category.findByIdAndUpdate(product.category, {
+        $inc: { productCount: -1 }
+      });
+      await Category.findByIdAndUpdate(updateData.category, {
+        $inc: { productCount: 1 }
+      });
+    }
+
+    // Update product fields
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined) {
+        product[key] = updateData[key];
+      }
+    });
+
+    await product.save();
+
+    res.json({
+      success: true,
+      data: { product },
+      message: 'Product updated successfully'
+    });
+  } catch (error) {
+    console.error('Update product error:', error);
+    
+    if (error.name === 'ValidationError') {
+      const field = Object.keys(error.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: error.errors[field].message,
+        field: field
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating product'
+    });
+  }
+};
+
+// Delete a product
+const deleteProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findOne({
+      _id: id,
+      seller: req.user._id
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Update category product count
+    await Category.findByIdAndUpdate(product.category, {
+      $inc: { productCount: -1 }
+    });
+
+    await Product.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while deleting product'
+    });
+  }
+};
+
+// Get product statistics
+const getProductStats = async (req, res) => {
+  try {
+    const totalProducts = await Product.countDocuments({ seller: req.user._id });
+    const activeProducts = await Product.countDocuments({ 
+      seller: req.user._id, 
+      isActive: true, 
+      status: 'active' 
+    });
+    const outOfStockProducts = await Product.countDocuments({ 
+      seller: req.user._id, 
+      status: 'out-of-stock' 
+    });
+    const featuredProducts = await Product.countDocuments({ 
+      seller: req.user._id, 
+      isFeatured: true 
+    });
+
+    const topProducts = await Product.find({ seller: req.user._id })
+      .sort({ totalOrders: -1, averageRating: -1 })
+      .limit(5)
+      .select('name totalOrders averageRating price');
+
+    res.json({
+      success: true,
+      data: {
+        totalProducts,
+        activeProducts,
+        outOfStockProducts,
+        featuredProducts,
+        topProducts
+      },
+      message: 'Product statistics retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Get product stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching product statistics'
     });
   }
 };
 
 module.exports = {
   getSellerProducts,
-  getProducts,
+  getPublicProducts,
+  getFeaturedProducts,
   getProduct,
   createProduct,
   updateProduct,
   deleteProduct,
-  getProductStats,
-  getFeaturedProducts
+  getProductStats
 };

@@ -9,6 +9,7 @@ const {
 } = require('../middlewares/validation');
 
 // Public routes - Remove validation middleware to avoid conflicts
+router.post('/register', authController.registerUser);
 router.post('/buyer/register', authController.registerBuyer);
 router.post('/seller/register', authController.registerSeller);
 router.post('/login', authController.login);

@@ -1,38 +1,63 @@
 const mongoose = require('mongoose');
 
 const categorySchema = new mongoose.Schema({
-  name: { type: String, required: true, trim: true, unique: true },
-  description: { type: String, trim: true },
-  image: { type: String, default: '' },
-  isActive: { type: Boolean, default: true },
-  seller: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  productCount: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    minlength: 2,
+    maxlength: 50
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: 500
+  },
+  image: {
+    type: String,
+    default: ''
+  },
+  icon: {
+    type: String,
+    default: '📦'
+  },
+  color: {
+    type: String,
+    default: '#059669'
+  },
+  seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  productCount: {
+    type: Number,
+    default: 0
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+}, {
+  timestamps: true
 });
 
 // Update the updatedAt field before saving
 categorySchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
+  this.updatedAt = new Date();
   next();
 });
 
-// Virtuals
-categorySchema.virtual('formattedCreatedAt').get(function() {
-  return this.createdAt.toLocaleDateString();
-});
-
-categorySchema.virtual('status').get(function() {
-  return this.isActive ? 'Active' : 'Inactive';
-});
-
-// Ensure virtuals are serialized
-categorySchema.set('toJSON', { virtuals: true });
-
-// Method to update product count
-categorySchema.methods.updateProductCount = async function(ProductModel) {
-  this.productCount = await ProductModel.countDocuments({ category: this._id });
-  await this.save();
-};
+// Index for better query performance
+categorySchema.index({ seller: 1, isActive: 1 });
+categorySchema.index({ name: 1 }, { unique: true });
 
 module.exports = mongoose.model('Category', categorySchema);

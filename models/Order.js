@@ -6,58 +6,47 @@ const orderItemSchema = new mongoose.Schema({
     ref: 'Product',
     required: true
   },
+  productName: {
+    type: String,
+    required: true
+  },
+  productImage: {
+    type: String,
+    default: ''
+  },
   quantity: {
     type: Number,
     required: true,
     min: 1
+  },
+  unit: {
+    type: String,
+    required: true
   },
   price: {
     type: Number,
     required: true,
     min: 0
   },
-  unit: {
-    type: String,
-    enum: ['kg', 'dozen', 'piece', 'liter'],
+  total: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
-  }
-});
-
-const deliveryAddressSchema = new mongoose.Schema({
-  fullName: {
-    type: String,
-    required: true,
-    trim: true
   },
-  phone: {
+  sellerName: {
     type: String,
-    required: true,
-    trim: true
-  },
-  address: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  city: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  postalCode: {
-    type: String,
-    trim: true
-  },
-  landmark: {
-    type: String,
-    trim: true
+    required: true
   }
 });
 
 const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
-    unique: true,
     required: true
   },
   buyer: {
@@ -65,13 +54,20 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  seller: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+  buyerName: {
+    type: String,
+    required: true
+  },
+  buyerEmail: {
+    type: String,
+    required: true
+  },
+  buyerPhone: {
+    type: String,
     required: true
   },
   items: [orderItemSchema],
-  totalAmount: {
+  subtotal: {
     type: Number,
     required: true,
     min: 0
@@ -81,14 +77,24 @@ const orderSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
-  finalAmount: {
+  tax: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  discount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  total: {
     type: Number,
     required: true,
     min: 0
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled', 'refunded'],
+    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
     default: 'pending'
   },
   paymentStatus: {
@@ -98,89 +104,144 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['cash_on_delivery', 'esewa', 'khalti', 'bank_transfer'],
+    enum: ['cod', 'khalti', 'esewa', 'bank_transfer'],
     required: true
   },
-  deliveryAddress: deliveryAddressSchema,
+  paymentDetails: {
+    transactionId: String,
+    paymentGateway: String,
+    paidAt: Date
+  },
+  deliveryAddress: {
+    street: { type: String, required: true },
+    city: { type: String, required: true },
+    state: { type: String, required: true },
+    postalCode: { type: String },
+    country: { type: String, default: 'Nepal' },
+    landmark: String,
+    instructions: String
+  },
   deliveryDate: {
     type: Date
   },
   deliveryTimeSlot: {
     type: String,
-    enum: ['morning', 'afternoon', 'evening']
+    enum: ['morning', 'afternoon', 'evening', 'anytime']
   },
-  specialInstructions: {
+  deliveryInstructions: {
     type: String,
     maxlength: 500
   },
-  trackingUpdates: [{
-    status: {
-      type: String,
-      required: true
-    },
-    message: {
-      type: String,
-      required: true
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  }],
-  cancelReason: {
+  notes: {
     type: String,
-    maxlength: 500
+    maxlength: 1000
   },
-  refundAmount: {
+  // Order tracking
+  orderDate: {
+    type: Date,
+    default: Date.now
+  },
+  confirmedAt: Date,
+  processedAt: Date,
+  shippedAt: Date,
+  deliveredAt: Date,
+  cancelledAt: Date,
+  cancellationReason: String,
+  // Reviews and feedback
+  buyerRating: {
     type: Number,
-    min: 0
+    min: 1,
+    max: 5
   },
-  estimatedDeliveryTime: {
-    type: Date
+  buyerReview: {
+    type: String,
+    maxlength: 500
+  },
+  sellerRating: {
+    type: Number,
+    min: 1,
+    max: 5
+  },
+  sellerReview: {
+    type: String,
+    maxlength: 500
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
 });
 
-// Generate unique order number
-orderSchema.pre('save', async function(next) {
-  if (!this.orderNumber) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `VR${Date.now().toString().slice(-6)}${(count + 1).toString().padStart(3, '0')}`;
-  }
-  next();
-});
-
-// Calculate final amount including delivery fee
+// Generate order number before saving
 orderSchema.pre('save', function(next) {
-  this.finalAmount = this.totalAmount + this.deliveryFee;
+  if (this.isNew) {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    this.orderNumber = `VR${year}${month}${day}${random}`;
+  }
+  
+  this.updatedAt = new Date();
   next();
 });
 
-// Add tracking update method
-orderSchema.methods.addTrackingUpdate = function(status, message, updatedBy) {
-  this.trackingUpdates.push({
-    status,
-    message,
-    timestamp: new Date(),
-    updatedBy
-  });
-  this.status = status;
+// Indexes for better query performance
+orderSchema.index({ buyer: 1, createdAt: -1 });
+orderSchema.index({ 'items.seller': 1, createdAt: -1 });
+orderSchema.index({ orderNumber: 1 }, { unique: true });
+orderSchema.index({ status: 1 });
+orderSchema.index({ paymentStatus: 1 });
+
+// Virtual for order age
+orderSchema.virtual('age').get(function() {
+  return Math.floor((Date.now() - this.createdAt) / (1000 * 60 * 60 * 24));
+});
+
+// Method to update order status
+orderSchema.methods.updateStatus = function(newStatus, reason = null) {
+  this.status = newStatus;
+  
+  const now = new Date();
+  switch (newStatus) {
+    case 'confirmed':
+      this.confirmedAt = now;
+      break;
+    case 'processing':
+      this.processedAt = now;
+      break;
+    case 'shipped':
+      this.shippedAt = now;
+      break;
+    case 'delivered':
+      this.deliveredAt = now;
+      break;
+    case 'cancelled':
+      this.cancelledAt = now;
+      this.cancellationReason = reason;
+      break;
+  }
+  
   return this.save();
 };
 
-// Get order summary method
-orderSchema.methods.getOrderSummary = function() {
+// Method to calculate order summary
+orderSchema.methods.getSummary = function() {
   return {
     orderNumber: this.orderNumber,
+    totalItems: this.items.length,
+    totalQuantity: this.items.reduce((sum, item) => sum + item.quantity, 0),
+    subtotal: this.subtotal,
+    total: this.total,
     status: this.status,
-    totalItems: this.items.reduce((sum, item) => sum + item.quantity, 0),
-    finalAmount: this.finalAmount,
-    createdAt: this.createdAt
+    orderDate: this.orderDate
   };
 };
 

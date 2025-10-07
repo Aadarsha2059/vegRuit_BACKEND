@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const reviewSchema = new mongoose.Schema({
   reviewId: {
     type: String,
-    unique: true,
     required: true
   },
   // Review target - can be product or seller
@@ -181,6 +180,9 @@ reviewSchema.pre('save', async function(next) {
   }
   next();
 });
+
+// Add unique index for reviewId
+reviewSchema.index({ reviewId: 1 }, { unique: true });
 
 // Add helpful vote method
 reviewSchema.methods.addVote = function(userId, voteType) {

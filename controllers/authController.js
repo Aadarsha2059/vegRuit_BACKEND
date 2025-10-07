@@ -3,176 +3,131 @@ const User = require('../models/User');
 
 // Generate JWT token
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || process.env.SECRET, { expiresIn: '7d' });
+  const secret = process.env.JWT_SECRET || process.env.SECRET || 'your_super_secret_jwt_key_here_make_it_long_and_secure_12345';
+  return jwt.sign({ userId }, secret, { expiresIn: '7d' });
 };
 
-// Buyer Registration
+// Enhanced Registration (supports multiple roles)
+const registerUser = async (req, res) => {
+  try {
+    const { 
+      username, email, password, firstName, lastName, phone, city,
+      userType, isBuyer, isSeller, address, farmName, farmLocation 
+    } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [{ username }, { email }]
+    });
+
+    if (existingUser) {
+      const isUsernameExists = existingUser.username === username;
+      const isEmailExists = existingUser.email === email;
+      
+      return res.status(400).json({
+        success: false,
+        message: isUsernameExists ? 'Username already exists' : 'Email already exists',
+        field: isUsernameExists ? 'username' : 'email',
+        suggestion: `This ${isUsernameExists ? 'username' : 'email'} is already registered. Please login instead.`,
+        existingUserType: existingUser.userType
+      });
+    }
+
+    // Create new user with multiple roles support
+    const userData = {
+      username: username.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+      city: city.trim(),
+      userType: userType || (isBuyer && isSeller ? ['buyer', 'seller'] : isBuyer ? ['buyer'] : ['seller']),
+      isBuyer: isBuyer || false,
+      isSeller: isSeller || false
+    };
+
+    // Add role-specific fields
+    if (isBuyer && address) {
+      userData.address = address.trim();
+    }
+    if (isSeller && farmName && farmLocation) {
+      userData.farmName = farmName.trim();
+      userData.farmLocation = farmLocation.trim();
+    }
+
+    const user = new User(userData);
+    await user.save();
+
+    // Generate token
+    const token = generateToken(user._id);
+
+    // Get user without password
+    const userResponse = user.toJSON();
+
+    const roleText = user.isBuyer && user.isSeller ? 'Buyer & Seller' : 
+                    user.isBuyer ? 'Buyer' : 'Seller';
+
+    res.status(201).json({
+      success: true,
+      message: `${roleText} account created successfully! Welcome to VegRuit!`,
+      user: userResponse,
+      token,
+      userType: user.userType
+    });
+  } catch (error) {
+    console.error('User registration error:', error);
+    
+    // Handle mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const field = Object.keys(error.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: error.errors[field].message,
+        field: field
+      });
+    }
+
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
+        field: field
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Server error during registration. Please try again.',
+      field: 'server'
+    });
+  }
+};
+
+// Legacy Buyer Registration (for backward compatibility)
 const registerBuyer = async (req, res) => {
-  try {
-    const { username, email, password, firstName, lastName, phone, address, city } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }]
-    });
-
-    if (existingUser) {
-      const isUsernameExists = existingUser.username === username;
-      const isEmailExists = existingUser.email === email;
-      
-      return res.status(400).json({
-        success: false,
-        message: isUsernameExists ? 'Username already exists' : 'Email already exists',
-        field: isUsernameExists ? 'username' : 'email',
-        suggestion: existingUser.userType === 'seller' ? 
-          `This ${isUsernameExists ? 'username' : 'email'} is registered as a seller. Please use the seller login.` : 
-          `This ${isUsernameExists ? 'username' : 'email'} is already registered. Please login instead.`,
-        existingUserType: existingUser.userType
-      });
-    }
-
-    // Create new buyer
-    const buyer = new User({
-      username: username.trim(),
-      email: email.toLowerCase().trim(),
-      password,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone.trim(),
-      address: address.trim(),
-      city: city.trim(),
-      userType: 'buyer'
-    });
-
-    await buyer.save();
-
-    // Generate token
-    const token = generateToken(buyer._id);
-
-    // Get user without password
-    const userResponse = buyer.toJSON();
-
-    res.status(201).json({
-      success: true,
-      message: 'Buyer account created successfully! Welcome to VegRuit!',
-      user: userResponse,
-      token,
-      userType: buyer.userType
-    });
-  } catch (error) {
-    console.error('Buyer registration error:', error);
-    
-    // Handle mongoose validation errors
-    if (error.name === 'ValidationError') {
-      const field = Object.keys(error.errors)[0];
-      return res.status(400).json({
-        success: false,
-        message: error.errors[field].message,
-        field: field
-      });
-    }
-
-    // Handle duplicate key errors
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
-        field: field
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Server error during registration. Please try again.',
-      field: 'server'
-    });
-  }
+  const buyerData = {
+    ...req.body,
+    userType: ['buyer'],
+    isBuyer: true,
+    isSeller: false
+  };
+  req.body = buyerData;
+  return registerUser(req, res);
 };
 
-// Seller Registration
+// Legacy Seller Registration (for backward compatibility)
 const registerSeller = async (req, res) => {
-  try {
-    const { username, email, password, firstName, lastName, phone, farmName, farmLocation, city } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }]
-    });
-
-    if (existingUser) {
-      const isUsernameExists = existingUser.username === username;
-      const isEmailExists = existingUser.email === email;
-      
-      return res.status(400).json({
-        success: false,
-        message: isUsernameExists ? 'Username already exists' : 'Email already exists',
-        field: isUsernameExists ? 'username' : 'email',
-        suggestion: existingUser.userType === 'buyer' ? 
-          `This ${isUsernameExists ? 'username' : 'email'} is registered as a buyer. Please use the buyer login.` : 
-          `This ${isUsernameExists ? 'username' : 'email'} is already registered. Please login instead.`,
-        existingUserType: existingUser.userType
-      });
-    }
-
-    // Create new seller
-    const seller = new User({
-      username: username.trim(),
-      email: email.toLowerCase().trim(),
-      password,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone.trim(),
-      farmName: farmName.trim(),
-      farmLocation: farmLocation.trim(),
-      city: city.trim(),
-      userType: 'seller'
-    });
-
-    await seller.save();
-
-    // Generate token
-    const token = generateToken(seller._id);
-
-    // Get user without password
-    const userResponse = seller.toJSON();
-
-    res.status(201).json({
-      success: true,
-      message: 'Seller account created successfully! Welcome to VegRuit!',
-      user: userResponse,
-      token,
-      userType: seller.userType
-    });
-  } catch (error) {
-    console.error('Seller registration error:', error);
-    
-    // Handle mongoose validation errors
-    if (error.name === 'ValidationError') {
-      const field = Object.keys(error.errors)[0];
-      return res.status(400).json({
-        success: false,
-        message: error.errors[field].message,
-        field: field
-      });
-    }
-
-    // Handle duplicate key errors
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
-        field: field
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Server error during registration. Please try again.',
-      field: 'server'
-    });
-  }
+  const sellerData = {
+    ...req.body,
+    userType: ['seller'],
+    isBuyer: false,
+    isSeller: true
+  };
+  req.body = sellerData;
+  return registerUser(req, res);
 };
 
 // Login (for both buyers and sellers)
@@ -180,16 +135,27 @@ const login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username/email and password are required',
+        field: 'credentials'
+      });
+    }
+
     // Find user by username or email
     const user = await User.findOne({
-      $or: [{ username: username.trim() }, { email: username.toLowerCase().trim() }]
+      $or: [
+        { username: username.trim() }, 
+        { email: username.toLowerCase().trim() }
+      ]
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'No account found with this username/email',
-        suggestion: 'Please check your credentials or create a new account',
+        message: 'Incorrect username/email or password',
+        suggestion: 'Please check your credentials and try again',
         field: 'username'
       });
     }
@@ -208,8 +174,8 @@ const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Incorrect password',
-        suggestion: 'Please check your password and try again',
+        message: 'Incorrect username/email or password',
+        suggestion: 'Please check your credentials and try again',
         field: 'password'
       });
     }
@@ -224,9 +190,12 @@ const login = async (req, res) => {
     // Get user without password
     const userResponse = user.toJSON();
 
+    const roleText = user.isBuyer && user.isSeller ? 'Buyer & Seller' : 
+                    user.isBuyer ? 'Buyer' : 'Seller';
+
     res.json({
       success: true,
-      message: `Welcome back! ${user.userType === 'buyer' ? 'Buyer' : 'Seller'} login successful`,
+      message: `Welcome back! ${roleText} login successful`,
       user: userResponse,
       token,
       userType: user.userType
@@ -355,6 +324,7 @@ const checkUserExists = async (req, res) => {
 };
 
 module.exports = {
+  registerUser,
   registerBuyer,
   registerSeller,
   login,

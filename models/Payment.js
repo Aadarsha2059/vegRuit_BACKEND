@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const paymentSchema = new mongoose.Schema({
   paymentId: {
     type: String,
-    unique: true,
     required: true
   },
   order: {
@@ -147,6 +146,9 @@ paymentSchema.pre('save', async function(next) {
   }
   next();
 });
+
+// Add unique index for paymentId
+paymentSchema.index({ paymentId: 1 }, { unique: true });
 
 // Calculate net amount after processing fee
 paymentSchema.pre('save', function(next) {
