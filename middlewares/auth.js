@@ -13,7 +13,13 @@ const auth = async (req, res, next) => {
       });
     }
 
-    const secret = process.env.JWT_SECRET || process.env.SECRET || 'your_super_secret_jwt_key_here_make_it_long_and_secure_12345';
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server configuration error.' 
+      });
+    }
     const decoded = jwt.verify(token, secret);
     const user = await User.findById(decoded.userId);
     

@@ -8,11 +8,11 @@ const {
   validateLogin 
 } = require('../middlewares/validation');
 
-// Public routes - Remove validation middleware to avoid conflicts
-router.post('/register', authController.registerUser);
-router.post('/buyer/register', authController.registerBuyer);
-router.post('/seller/register', authController.registerSeller);
-router.post('/login', authController.login);
+// Public routes with validation
+router.post('/register', validateBuyerRegistration, authController.registerUser);
+router.post('/buyer/register', validateBuyerRegistration, authController.registerBuyer);
+router.post('/seller/register', validateSellerRegistration, authController.registerSeller);
+router.post('/login', validateLogin, authController.login);
 router.get('/check-user', authController.checkUserExists);
 
 // Protected routes
