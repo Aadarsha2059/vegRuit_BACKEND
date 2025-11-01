@@ -136,7 +136,7 @@ const registerSeller = async (req, res) => {
 // Login (for both buyers and sellers)
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, userType } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -181,6 +181,19 @@ const login = async (req, res) => {
         suggestion: 'Please check your credentials and try again',
         field: 'password'
       });
+    }
+
+    // Check if user has the requested role (if specified)
+    if (userType) {
+      const userTypes = Array.isArray(user.userType) ? user.userType : [user.userType];
+      if (!userTypes.includes(userType)) {
+        return res.status(403).json({
+          success: false,
+          message: `This account is not registered as a ${userType}`,
+          suggestion: `Please use the correct login page for your account type`,
+          field: 'userType'
+        });
+      }
     }
 
     // Update last login
