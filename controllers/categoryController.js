@@ -1,5 +1,7 @@
 const Category = require('../models/Category');
 const Product = require('../models/Product');
+const fs = require('fs');
+const path = require('path');
 
 // Get all categories for a seller
 const getSellerCategories = async (req, res) => {
@@ -49,7 +51,7 @@ const getPublicCategories = async (req, res) => {
 // Create a new category
 const createCategory = async (req, res) => {
   try {
-    const { name, description, image, icon, color } = req.body;
+    const { name, description, icon, color } = req.body;
 
     // Check if category name already exists for this seller
     const existingCategory = await Category.findOne({
@@ -64,10 +66,16 @@ const createCategory = async (req, res) => {
       });
     }
 
+    // Handle uploaded image
+    let imageUrl = '';
+    if (req.file) {
+      imageUrl = `/uploads/categories/${req.file.filename}`;
+    }
+
     const category = new Category({
       name: name.trim(),
       description: description?.trim() || '',
-      image: image || '',
+      image: imageUrl,
       icon: icon || '📦',
       color: color || '#059669',
       seller: req.user._id
@@ -103,7 +111,7 @@ const createCategory = async (req, res) => {
 const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, image, icon, color, isActive } = req.body;
+    const { name, description, icon, color, isActive } = req.body;
 
     const category = await Category.findOne({
       _id: id,
@@ -133,10 +141,21 @@ const updateCategory = async (req, res) => {
       }
     }
 
+    // Handle uploaded image
+    if (req.file) {
+      // Delete old image if exists
+      if (category.image) {
+        const oldImagePath = path.join(__dirname, '..', 'public', category.image);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+      category.image = `/uploads/categories/${req.file.filename}`;
+    }
+
     // Update category fields
     if (name) category.name = name.trim();
     if (description !== undefined) category.description = description.trim();
-    if (image !== undefined) category.image = image;
     if (icon !== undefined) category.icon = icon;
     if (color !== undefined) category.color = color;
     if (isActive !== undefined) category.isActive = isActive;
@@ -192,6 +211,14 @@ const deleteCategory = async (req, res) => {
         success: false,
         message: `Cannot delete category. It has ${productCount} products. Please move or delete the products first.`
       });
+    }
+
+    // Delete category image if exists
+    if (category.image) {
+      const imagePath = path.join(__dirname, '..', 'public', category.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
     }
 
     await Category.findByIdAndDelete(id);

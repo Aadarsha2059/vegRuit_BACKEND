@@ -24,8 +24,8 @@ app.use(cors({
   credentials: true
 }));
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files from public directory
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 // Routes
 const authRoutes = require('./routes/auth');

@@ -209,7 +209,7 @@ const createProduct = async (req, res) => {
   try {
     const {
       name, description, price, unit, stock, minOrder, maxOrder,
-      category, images, organic, fresh, origin, harvestDate,
+      category, organic, fresh, origin, harvestDate,
       expiryDate, tags, searchKeywords, isFeatured
     } = req.body;
 
@@ -226,6 +226,16 @@ const createProduct = async (req, res) => {
       });
     }
 
+    // Handle uploaded images
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      imageUrls = req.files.map(file => `/uploads/products/${file.filename}`);
+    }
+
+    // Parse arrays from form data
+    const parsedTags = tags ? (Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim())) : [];
+    const parsedKeywords = searchKeywords ? (Array.isArray(searchKeywords) ? searchKeywords : searchKeywords.split(',').map(k => k.trim())) : [];
+
     const product = new Product({
       name: name.trim(),
       description: description?.trim() || '',
@@ -236,15 +246,15 @@ const createProduct = async (req, res) => {
       maxOrder: parseInt(maxOrder) || 100,
       category: category,
       seller: req.user._id,
-      images: images || [],
-      organic: organic || false,
-      fresh: fresh !== undefined ? fresh : true,
+      images: imageUrls,
+      organic: organic === 'true' || organic === true,
+      fresh: fresh !== undefined ? (fresh === 'true' || fresh === true) : true,
       origin: origin || 'Local',
       harvestDate: harvestDate ? new Date(harvestDate) : undefined,
       expiryDate: expiryDate ? new Date(expiryDate) : undefined,
-      tags: tags || [],
-      searchKeywords: searchKeywords || [],
-      isFeatured: isFeatured || false
+      tags: parsedTags,
+      searchKeywords: parsedKeywords,
+      isFeatured: isFeatured === 'true' || isFeatured === true
     });
 
     await product.save();
@@ -319,10 +329,35 @@ const updateProduct = async (req, res) => {
       });
     }
 
+    // Handle uploaded images
+    if (req.files && req.files.length > 0) {
+      // Delete old images
+      const fs = require('fs');
+      const path = require('path');
+      
+      product.images.forEach(imagePath => {
+        const fullPath = path.join(__dirname, '..', 'public', imagePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      });
+
+      // Set new images
+      product.images = req.files.map(file => `/uploads/products/${file.filename}`);
+    }
+
     // Update product fields
     Object.keys(updateData).forEach(key => {
-      if (updateData[key] !== undefined) {
-        product[key] = updateData[key];
+      if (updateData[key] !== undefined && key !== 'images') {
+        if (key === 'tags' || key === 'searchKeywords') {
+          product[key] = Array.isArray(updateData[key]) ? updateData[key] : updateData[key].split(',').map(t => t.trim());
+        } else if (key === 'organic' || key === 'fresh' || key === 'isFeatured') {
+          product[key] = updateData[key] === 'true' || updateData[key] === true;
+        } else if (key === 'price' || key === 'stock' || key === 'minOrder' || key === 'maxOrder') {
+          product[key] = parseFloat(updateData[key]) || parseInt(updateData[key]) || 0;
+        } else {
+          product[key] = updateData[key];
+        }
       }
     });
 
@@ -368,6 +403,17 @@ const deleteProduct = async (req, res) => {
         message: 'Product not found'
       });
     }
+
+    // Delete product images
+    const fs = require('fs');
+    const path = require('path');
+    
+    product.images.forEach(imagePath => {
+      const fullPath = path.join(__dirname, '..', 'public', imagePath);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    });
 
     // Update category product count
     await Category.findByIdAndUpdate(product.category, {
