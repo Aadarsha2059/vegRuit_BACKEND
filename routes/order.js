@@ -9,6 +9,8 @@ router.get('/buyer', auth, orderController.getBuyerOrders);
 router.get('/seller', auth, orderController.getSellerOrders);
 router.get('/stats', auth, orderController.getOrderStats);
 router.get('/:id', auth, orderController.getOrder);
+router.put('/:id/accept', auth, orderController.acceptOrder);
+router.put('/:id/reject', auth, orderController.rejectOrder);
 router.put('/:id/status', auth, orderController.updateOrderStatus);
 router.put('/:id/cancel', auth, orderController.cancelOrder);
 

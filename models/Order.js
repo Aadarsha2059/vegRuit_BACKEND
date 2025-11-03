@@ -47,7 +47,8 @@ const orderItemSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   buyer: {
     type: mongoose.Schema.Types.ObjectId,
@@ -94,7 +95,7 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+    enum: ['pending', 'approved', 'rejected', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
     default: 'pending'
   },
   paymentStatus: {
@@ -130,11 +131,13 @@ const orderSchema = new mongoose.Schema({
   },
   deliveryInstructions: {
     type: String,
-    maxlength: 500
+    maxlength: 500,
+    default: ''
   },
   notes: {
     type: String,
-    maxlength: 1000
+    maxlength: 1000,
+    default: ''
   },
   // Order tracking
   orderDate: {
@@ -180,13 +183,13 @@ const orderSchema = new mongoose.Schema({
 
 // Generate order number before saving
 orderSchema.pre('save', function(next) {
-  if (this.isNew) {
+  if (this.isNew && !this.orderNumber) {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    this.orderNumber = `VR${year}${month}${day}${random}`;
+    this.orderNumber = `TS${year}${month}${day}${random}`;
   }
   
   this.updatedAt = new Date();

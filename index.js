@@ -69,25 +69,23 @@ mongoose
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Use port 5001 as default instead of 5000 to avoid conflicts
-const PORT = process.env.PORT || 5001;
+let PORT = process.env.PORT || 5001;
 
-// Start server with error handling for port conflicts
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+// Function to start server with port fallback
+const startServer = (port) => {
+  const server = app.listen(port, () => {
+    console.log(`🚀 Server running on http://localhost:${port}`);
+  });
 
-// Handle port in use errors gracefully
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
-    setTimeout(() => {
-      server.close();
-      const newPort = PORT + 1;
-      app.listen(newPort, () => {
-        console.log(`🚀 Server running on http://localhost:${newPort}`);
-      });
-    }, 1000);
-  } else {
-    console.error("Server error:", err);
-  }
-});
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${port} is already in use. Trying port 50011...`);
+      startServer(50011);
+    } else {
+      console.error("Server error:", err);
+    }
+  });
+};
+
+// Start the server
+startServer(PORT);
