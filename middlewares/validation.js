@@ -115,7 +115,7 @@ const validateLogin = [
   body('username')
     .trim()
     .notEmpty()
-    .withMessage('Username is required'),
+    .withMessage('Username or email is required'),
   
   body('password')
     .notEmpty()

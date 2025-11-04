@@ -105,16 +105,24 @@ cartSchema.methods.getSummary = async function() {
       const itemTotal = item.product.price * item.quantity;
       summary.totalValue += itemTotal;
       
+      // Ensure we have the full image URL
+      const productImage = item.product.images && item.product.images.length > 0 
+        ? item.product.images[0] 
+        : '';
+      
       summary.items.push({
         productId: item.product._id,
         productName: item.product.name,
-        productImage: item.product.images[0] || '',
+        productImage: productImage,
+        productImages: item.product.images || [], // Include all images
         quantity: item.quantity,
         unit: item.product.unit,
         price: item.product.price,
         total: itemTotal,
         seller: item.product.seller,
-        sellerName: item.product.sellerName || 'Unknown Seller'
+        sellerName: item.product.sellerName || 'Unknown Seller',
+        description: item.product.description || '',
+        category: item.product.category
       });
     }
   }
