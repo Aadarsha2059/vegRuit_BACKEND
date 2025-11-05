@@ -675,5 +675,40 @@ module.exports = {
   rejectOrder,
   updateOrderStatus,
   cancelOrder,
-  getOrderStats
+  getOrderStats,
+  confirmOrderReceipt
+};// C
+onfirm order receipt by buyer
+const confirmOrderReceipt = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      buyer: req.user._id,
+      status: 'delivered'
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found or not eligible for confirmation'
+      });
+    }
+
+    // Update status to received
+    await order.updateStatus('received');
+
+    res.json({
+      success: true,
+      data: { order },
+      message: 'Order receipt confirmed successfully'
+    });
+  } catch (error) {
+    console.error('Confirm order receipt error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to confirm order receipt'
+    });
+  }
 };

@@ -47,8 +47,7 @@ const orderItemSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   buyer: {
     type: mongoose.Schema.Types.ObjectId,
@@ -95,7 +94,7 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+    enum: ['pending', 'approved', 'rejected', 'confirmed', 'processing', 'shipped', 'delivered', 'received', 'cancelled', 'refunded'],
     default: 'pending'
   },
   paymentStatus: {
@@ -148,6 +147,7 @@ const orderSchema = new mongoose.Schema({
   processedAt: Date,
   shippedAt: Date,
   deliveredAt: Date,
+  receivedAt: Date,
   cancelledAt: Date,
   cancellationReason: String,
   // Reviews and feedback
@@ -225,6 +225,9 @@ orderSchema.methods.updateStatus = function(newStatus, reason = null) {
       break;
     case 'delivered':
       this.deliveredAt = now;
+      break;
+    case 'received':
+      this.receivedAt = now;
       break;
     case 'cancelled':
       this.cancelledAt = now;

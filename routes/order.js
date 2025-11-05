@@ -13,5 +13,6 @@ router.put('/:id/accept', auth, orderController.acceptOrder);
 router.put('/:id/reject', auth, orderController.rejectOrder);
 router.put('/:id/status', auth, orderController.updateOrderStatus);
 router.put('/:id/cancel', auth, orderController.cancelOrder);
+router.put('/:id/confirm-receipt', auth, orderController.confirmOrderReceipt);
 
 module.exports = router;

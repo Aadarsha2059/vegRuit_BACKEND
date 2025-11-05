@@ -33,12 +33,14 @@ const categoryRoutes = require('./routes/category');
 const productRoutes = require('./routes/product');
 const cartRoutes = require('./routes/cart');
 const orderRoutes = require('./routes/order');
+const reviewRoutes = require('./routes/review');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Simple route
 app.get("/", (req, res) => {
@@ -69,23 +71,58 @@ mongoose
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Use port 5001 as default instead of 5000 to avoid conflicts
-let PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5001;
 
-// Function to start server with port fallback
-const startServer = (port) => {
-  const server = app.listen(port, () => {
-    console.log(`🚀 Server running on http://localhost:${port}`);
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  console.log('🔄 Server will continue running...');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  console.log('🔄 Server will continue running...');
+});
+
+// Start the server with robust error handling
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📋 API Documentation: http://localhost:${PORT}/api`);
+  console.log(`🔗 Frontend should connect to: http://localhost:${PORT}`);
+  console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
+  console.log(`🔄 Server will auto-restart on crashes`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use!`);
+    console.error(`💡 Please stop any other process using port ${PORT} or change the PORT in .env file`);
+    console.error(`🔧 Run: taskkill /f /im node.exe`);
+    process.exit(1);
+  } else {
+    console.error("❌ Server error:", err);
+    console.log("🔄 Attempting to restart...");
+    setTimeout(() => {
+      server.close(() => {
+        app.listen(PORT, '0.0.0.0');
+      });
+    }, 1000);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
   });
+});
 
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log(`Port ${port} is already in use. Trying port 50011...`);
-      startServer(50011);
-    } else {
-      console.error("Server error:", err);
-    }
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
   });
-};
-
-// Start the server
-startServer(PORT);
+});
