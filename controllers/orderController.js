@@ -417,11 +417,11 @@ const rejectOrder = async (req, res) => {
 // ========================
 const updateOrderStatus = async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const { id } = req.params;
     const { status } = req.body;
 
     const order = await Order.findOne({
-      _id: orderId,
+      _id: id,
       'items.seller': req.user._id
     });
 
@@ -453,11 +453,11 @@ const updateOrderStatus = async (req, res) => {
 // ========================
 const cancelOrder = async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const { id } = req.params;
     const { reason } = req.body;
 
     const order = await Order.findOne({
-      _id: orderId,
+      _id: id,
       buyer: req.user._id,
       status: { $in: ['pending', 'confirmed'] }
     });
