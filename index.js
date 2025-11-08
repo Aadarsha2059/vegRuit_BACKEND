@@ -34,6 +34,8 @@ const productRoutes = require('./routes/product');
 const cartRoutes = require('./routes/cart');
 const orderRoutes = require('./routes/order');
 const reviewRoutes = require('./routes/review');
+const feedbackRoutes = require('./routes/feedback');
+const favoriteRoutes = require('./routes/favorite');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -41,6 +43,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/feedbacks', feedbackRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // Simple route
 app.get("/", (req, res) => {
