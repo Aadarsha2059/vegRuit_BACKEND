@@ -5,11 +5,17 @@ const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const firstError = errors.array()[0];
+    console.log(`[VALIDATION ERROR] Field: ${firstError.path}, Message: ${firstError.msg}`);
     return res.status(400).json({
       success: false,
       message: firstError.msg,
       field: firstError.path,
-      errors: errors.array()
+      errors: errors.array(),
+      data: {
+        user: null,
+        token: null,
+        userType: null
+      }
     });
   }
   next();
@@ -113,13 +119,32 @@ const validateSellerRegistration = [
 // Validation rules for login
 const validateLogin = [
   body('username')
-    .trim()
-    .notEmpty()
-    .withMessage('Username or email is required'),
+    .optional()
+    .trim(),
+  
+  body('email')
+    .optional()
+    .trim(),
   
   body('password')
     .notEmpty()
     .withMessage('Password is required'),
+  
+  (req, res, next) => {
+    // Check if either username or email is provided
+    if (!req.body.username && !req.body.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username or email is required',
+        field: 'username'
+      });
+    }
+    // If email is provided but not username, copy email to username field for controller
+    if (req.body.email && !req.body.username) {
+      req.body.username = req.body.email;
+    }
+    next();
+  },
   
   handleValidationErrors
 ];

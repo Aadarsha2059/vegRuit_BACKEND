@@ -4,9 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node scripts/start-with-check.js",
+    "start:direct": "node index.js",
     "dev": "nodemon index.js",
-    "test": "jest"
+    "test": "jest",
+    "seed": "node scripts/seed.js",
+    "setup": "node scripts/setup.js",
+    "check": "node scripts/check-db.js"
   },
   "keywords": [],
   "author": "",
@@ -25,10 +29,21 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "jest": "^30.0.2",
-    "supertest": "^7.1.1"
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^6.0.3",
+    "jest": "^30.2.0",
+    "mongodb-memory-server": "^10.3.0",
+    "supertest": "^7.1.4"
   },
   "jest": {
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": ["./backend_test/setup.js"],
+    "testMatch": ["**/backend_test/**/*.test.js"],
+    "coverageDirectory": "./coverage",
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/backend_test/**"
+    ]
   }
 }

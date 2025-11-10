@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../middlewares/auth');
-const { uploadProductImages, handleUploadError } = require('../middlewares/upload');
+const { uploadProductImages } = require('../middlewares/upload');
 const {
   getSellerProducts,
-  getProducts,
+  getPublicProducts,
   getProduct,
   createProduct,
   updateProduct,
@@ -15,7 +15,10 @@ const {
 
 // Public routes (no authentication required)
 // GET /api/products - Get all products for buyers
-router.get('/', getProducts);
+router.get('/', getPublicProducts);
+
+// GET /api/products/public - Get all products (backward compatibility)
+router.get('/public', getPublicProducts);
 
 // GET /api/products/featured - Get featured products
 router.get('/featured', getFeaturedProducts);
@@ -29,14 +32,17 @@ router.use(auth);
 // GET /api/products/seller/my - Get seller's products
 router.get('/seller/my', getSellerProducts);
 
+// GET /api/products/seller/all - Get seller's products (backward compatibility)
+router.get('/seller/all', getSellerProducts);
+
 // GET /api/products/seller/stats - Get product statistics
 router.get('/seller/stats', getProductStats);
 
 // POST /api/products - Create new product
-router.post('/', uploadProductImages, handleUploadError, createProduct);
+router.post('/', uploadProductImages, createProduct);
 
 // PUT /api/products/:id - Update product
-router.put('/:id', uploadProductImages, handleUploadError, updateProduct);
+router.put('/:id', uploadProductImages, updateProduct);
 
 // DELETE /api/products/:id - Delete product
 router.delete('/:id', deleteProduct);

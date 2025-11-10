@@ -18,6 +18,8 @@ const registerUser = async (req, res) => {
       userType, isBuyer, isSeller, address, farmName, farmLocation 
     } = req.body;
 
+    console.log(`[REGISTRATION ATTEMPT] Email: ${email}, Username: ${username}, UserType: ${userType || 'not specified'}`);
+
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ username }, { email }]
@@ -27,13 +29,38 @@ const registerUser = async (req, res) => {
       const isUsernameExists = existingUser.username === username;
       const isEmailExists = existingUser.email === email;
       
+      console.log(`[REGISTRATION FAILED] ${isUsernameExists ? 'Username' : 'Email'} already exists: ${username || email}`);
+      
       return res.status(400).json({
         success: false,
         message: isUsernameExists ? 'Username already exists' : 'Email already exists',
         field: isUsernameExists ? 'username' : 'email',
         suggestion: `This ${isUsernameExists ? 'username' : 'email'} is already registered. Please login instead.`,
-        existingUserType: existingUser.userType
+        data: {
+          user: null,
+          token: null,
+          userType: existingUser.userType
+        }
       });
+    }
+
+    // Determine user type and flags
+    let finalUserType;
+    let finalIsBuyer;
+    let finalIsSeller;
+
+    if (userType) {
+      // If userType is provided as string or array
+      const types = Array.isArray(userType) ? userType : [userType];
+      finalUserType = types;
+      finalIsBuyer = types.includes('buyer');
+      finalIsSeller = types.includes('seller');
+    } else {
+      // Use isBuyer and isSeller flags
+      finalIsBuyer = isBuyer || false;
+      finalIsSeller = isSeller || false;
+      finalUserType = finalIsBuyer && finalIsSeller ? ['buyer', 'seller'] : 
+                      finalIsBuyer ? ['buyer'] : ['seller'];
     }
 
     // Create new user with multiple roles support
@@ -45,22 +72,24 @@ const registerUser = async (req, res) => {
       lastName: lastName.trim(),
       phone: phone.trim(),
       city: city.trim(),
-      userType: userType || (isBuyer && isSeller ? ['buyer', 'seller'] : isBuyer ? ['buyer'] : ['seller']),
-      isBuyer: isBuyer || false,
-      isSeller: isSeller || false
+      userType: finalUserType,
+      isBuyer: finalIsBuyer,
+      isSeller: finalIsSeller
     };
 
     // Add role-specific fields
-    if (isBuyer && address) {
+    if (finalIsBuyer && address) {
       userData.address = address.trim();
     }
-    if (isSeller && farmName && farmLocation) {
+    if (finalIsSeller && farmName && farmLocation) {
       userData.farmName = farmName.trim();
       userData.farmLocation = farmLocation.trim();
     }
 
     const user = new User(userData);
     await user.save();
+
+    console.log(`[REGISTRATION SUCCESS] User: ${user.email}, Type: ${user.userType.join(', ')}`);
 
     // Generate token
     const token = generateToken(user._id);
@@ -74,32 +103,57 @@ const registerUser = async (req, res) => {
     res.status(201).json({
       success: true,
       message: `${roleText} account created successfully! Welcome to VegRuit!`,
-      user: userResponse,
-      token,
-      userType: user.userType
+      data: {
+        user: userResponse,
+        token,
+        userType: user.userType
+      }
     });
   } catch (error) {
-    console.error('User registration error:', error);
+    console.error('[REGISTRATION ERROR]', error);
     
     // Handle mongoose validation errors
     if (error.name === 'ValidationError') {
       const field = Object.keys(error.errors)[0];
+      console.log(`[REGISTRATION FAILED] Validation error: ${field} - ${error.errors[field].message}`);
       return res.status(400).json({
         success: false,
         message: error.errors[field].message,
-        field: field
+        field: field,
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
     // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
+      console.log(`[REGISTRATION FAILED] Duplicate key: ${field}`);
       return res.status(400).json({
         success: false,
         message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
-        field: field
+        field: field,
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
+
+    res.status(500).json({
+      success: false,
+      message: 'Server error during registration. Please try again.',
+      field: 'server',
+      data: {
+        user: null,
+        token: null,
+        userType: null
+      }
+    });
 
     res.status(500).json({
       success: false,
@@ -138,11 +192,20 @@ const login = async (req, res) => {
   try {
     const { username, password, userType } = req.body;
 
+    // Log login attempt (without password)
+    console.log(`[LOGIN ATTEMPT] Username: ${username}, UserType: ${userType || 'any'}`);
+
     if (!username || !password) {
+      console.log('[LOGIN FAILED] Missing credentials');
       return res.status(400).json({
         success: false,
         message: 'Username/email and password are required',
-        field: 'credentials'
+        field: 'credentials',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
@@ -155,11 +218,17 @@ const login = async (req, res) => {
     });
 
     if (!user) {
+      console.log(`[LOGIN FAILED] User not found: ${username}`);
       return res.status(401).json({
         success: false,
         message: 'Incorrect username/email or password',
         suggestion: 'Please check your credentials and try again',
-        field: 'username'
+        field: 'username',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
@@ -168,20 +237,33 @@ const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated. Please contact support.',
-        field: 'account'
+        field: 'account',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
     // Verify password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      console.log(`[LOGIN FAILED] Invalid password for user: ${username}`);
       return res.status(401).json({
         success: false,
         message: 'Incorrect username/email or password',
         suggestion: 'Please check your credentials and try again',
-        field: 'password'
+        field: 'password',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
+
+    console.log(`[LOGIN SUCCESS] User: ${user.email}, Type: ${user.userType.join(', ')}`);
 
     // Check if user has the requested role (if specified)
     if (userType) {
@@ -191,7 +273,12 @@ const login = async (req, res) => {
           success: false,
           message: `This account is not registered as a ${userType}`,
           suggestion: `Please use the correct login page for your account type`,
-          field: 'userType'
+          field: 'userType',
+          data: {
+            user: null,
+            token: null,
+            userType: user.userType
+          }
         });
       }
     }
@@ -212,16 +299,23 @@ const login = async (req, res) => {
     res.json({
       success: true,
       message: `Welcome back! ${roleText} login successful`,
-      user: userResponse,
-      token,
-      userType: user.userType
+      data: {
+        user: userResponse,
+        token,
+        userType: user.userType
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error during login. Please try again.',
-      field: 'server'
+      field: 'server',
+      data: {
+        user: null,
+        token: null,
+        userType: null
+      }
     });
   }
 };

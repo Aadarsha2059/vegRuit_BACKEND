@@ -9,7 +9,12 @@ const auth = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Access denied. No token provided.' 
+        message: 'Access denied. No token provided.',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
@@ -17,7 +22,12 @@ const auth = async (req, res, next) => {
     if (!secret) {
       return res.status(500).json({ 
         success: false, 
-        message: 'Server configuration error.' 
+        message: 'Server configuration error.',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
     const decoded = jwt.verify(token, secret);
@@ -26,7 +36,12 @@ const auth = async (req, res, next) => {
     if (!user || !user.isActive) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Invalid token or user not found.' 
+        message: 'Invalid token or user not found.',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
 
@@ -36,19 +51,34 @@ const auth = async (req, res, next) => {
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ 
         success: false, 
-        message: 'Invalid token.' 
+        message: 'Invalid token.',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ 
         success: false, 
-        message: 'Token expired.' 
+        message: 'Token expired.',
+        data: {
+          user: null,
+          token: null,
+          userType: null
+        }
       });
     }
     
     res.status(500).json({ 
       success: false, 
-      message: 'Server error.' 
+      message: 'Server error.',
+      data: {
+        user: null,
+        token: null,
+        userType: null
+      }
     });
   }
 };
@@ -61,7 +91,12 @@ const requireUserType = (userType) => {
     if (!userTypes.includes(userType)) {
       return res.status(403).json({ 
         success: false, 
-        message: `Access denied. ${userType} role required.` 
+        message: `Access denied. ${userType} role required.`,
+        data: {
+          user: null,
+          token: null,
+          userType: req.user.userType
+        }
       });
     }
     next();

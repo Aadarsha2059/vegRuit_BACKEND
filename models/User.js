@@ -44,11 +44,15 @@ const userSchema = new mongoose.Schema({
   // Allow users to be both buyer and seller
   isBuyer: {
     type: Boolean,
-    default: true
+    default: function() {
+      return !this.userType || this.userType.includes('buyer');
+    }
   },
   isSeller: {
     type: Boolean,
-    default: false
+    default: function() {
+      return this.userType && this.userType.includes('seller');
+    }
   },
   // Buyer specific fields
   address: {

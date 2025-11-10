@@ -1,197 +1,249 @@
-# TarkariShop Backend
+# TarkariShop Backend API
 
-A MERN stack backend for the TarkariShop application, providing authentication and user management for both buyers and sellers.
+Backend API for TarkariShop - A fresh produce e-commerce platform connecting farmers with buyers.
 
 ## Features
 
-- **User Authentication**: Login and registration for buyers and sellers
-- **JWT Token Management**: Secure authentication with JSON Web Tokens
-- **Input Validation**: Comprehensive validation using express-validator
-- **Password Hashing**: Secure password storage using bcryptjs
-- **MongoDB Integration**: Data persistence with Mongoose ODM
-- **Role-based Access**: Separate endpoints and validation for buyers and sellers
+- User authentication (Buyers & Sellers)
+- Product management
+- Category management
+- Shopping cart
+- Order management
+- Reviews and ratings
+- JWT-based authentication
 
 ## Prerequisites
 
 - Node.js (v14 or higher)
-- MongoDB (running locally or cloud instance)
-- npm or yarn package manager
+- MongoDB (local or Atlas)
+- npm or yarn
 
 ## Installation
 
-1. Clone the repository and navigate to the backend directory:
+1. Clone the repository
 ```bash
 cd tarkarishop_backend
 ```
 
-2. Install dependencies:
+2. Install dependencies
 ```bash
 npm install
 ```
 
 3. Create a `.env` file in the root directory with the following variables:
 ```env
+PORT=5001
 MONGODB_URI=mongodb://localhost:27017/tarkarishop
-JWT_SECRET=your_super_secret_jwt_key_here_change_in_production
-PORT=5000
+JWT_SECRET=your_jwt_secret_key_here_make_it_long_and_secure
 NODE_ENV=development
 ```
 
-4. Start the development server:
+## Database Setup
+
+### Seed the Database
+
+To populate the database with sample data (users, categories, and products):
+
+```bash
+npm run seed
+```
+
+This will create:
+- **Sample Buyer**: 
+  - Email: `buyer@example.com`
+  - Password: `password123`
+  
+- **Sample Seller**: 
+  - Email: `seller@example.com`
+  - Password: `password123`
+
+- **4 Categories**: Vegetables, Fruits, Leafy Greens, Root Vegetables
+- **8 Sample Products**: Tomatoes, Spinach, Apples, Carrots, etc.
+
+## Running the Application
+
+### Development Mode (with auto-reload)
 ```bash
 npm run dev
 ```
 
+### Production Mode
+```bash
+npm start
+```
+
+The server will start on `http://localhost:5001`
+
+## Testing
+
+Run all tests:
+```bash
+npm test
+```
+
+The test suite includes:
+- Authentication tests (8 tests)
+- Product tests (7 tests)
+- Cart tests (6 tests)
+- Order tests (4 tests)
+
+**Total: 25 tests** ✅
+
 ## API Endpoints
 
-### Authentication Routes
+### Authentication
+- `POST /api/auth/register` - Register new user (buyer/seller)
+- `POST /api/auth/buyer/register` - Register buyer
+- `POST /api/auth/seller/register` - Register seller
+- `POST /api/auth/login` - Login
+- `GET /api/auth/profile` - Get user profile (protected)
+- `PUT /api/auth/profile` - Update profile (protected)
 
-#### Buyer Registration
-- **POST** `/api/auth/buyer/register`
-- **Body**: 
-```json
-{
-  "username": "string",
-  "email": "string",
-  "password": "string",
-  "firstName": "string",
-  "lastName": "string",
-  "phone": "string",
-  "address": "string",
-  "city": "string"
-}
-```
+### Products
+- `GET /api/products` - Get all products (public)
+- `GET /api/products/public` - Get all products (backward compatibility)
+- `GET /api/products/featured` - Get featured products
+- `GET /api/products/:id` - Get single product
+- `POST /api/products` - Create product (seller only)
+- `PUT /api/products/:id` - Update product (seller only)
+- `DELETE /api/products/:id` - Delete product (seller only)
 
-#### Seller Registration
-- **POST** `/api/auth/seller/register`
-- **Body**:
-```json
-{
-  "username": "string",
-  "email": "string",
-  "password": "string",
-  "firstName": "string",
-  "lastName": "string",
-  "phone": "string",
-  "farmName": "string",
-  "farmLocation": "string",
-  "city": "string"
-}
-```
+### Categories
+- `GET /api/categories` - Get all categories
+- `POST /api/categories` - Create category (seller only)
+- `PUT /api/categories/:id` - Update category (seller only)
+- `DELETE /api/categories/:id` - Delete category (seller only)
 
-#### Login (Both Buyers and Sellers)
-- **POST** `/api/auth/login`
-- **Body**:
-```json
-{
-  "username": "string",
-  "password": "string"
-}
-```
+### Cart
+- `GET /api/cart` - Get user cart
+- `POST /api/cart/add` - Add item to cart
+- `PUT /api/cart/item/:productId` - Update cart item quantity
+- `DELETE /api/cart/item/:productId` - Remove item from cart
+- `DELETE /api/cart/clear` - Clear entire cart
 
-#### Get Profile (Protected)
-- **GET** `/api/auth/profile`
-- **Headers**: `Authorization: Bearer <token>`
-
-#### Update Profile (Protected)
-- **PUT** `/api/auth/profile`
-- **Headers**: `Authorization: Bearer <token>`
-- **Body**: Fields to update
-
-#### Logout (Protected)
-- **POST** `/api/auth/logout`
-- **Headers**: `Authorization: Bearer <token>`
+### Orders
+- `POST /api/orders` - Create order from cart
+- `GET /api/orders/buyer` - Get buyer orders
+- `GET /api/orders/seller` - Get seller orders
+- `GET /api/orders/:id` - Get single order
+- `PUT /api/orders/:id/status` - Update order status (seller)
+- `PUT /api/orders/:id/cancel` - Cancel order
 
 ## Project Structure
 
 ```
 tarkarishop_backend/
-├── config/           # Configuration files
-├── controllers/      # Route controllers
-│   └── authController.js
-├── middlewares/      # Custom middleware
-│   ├── auth.js       # Authentication middleware
-│   └── validation.js # Input validation
-├── models/           # Database models
-│   └── User.js       # User model
-├── routes/           # API routes
-│   └── auth.js       # Authentication routes
-├── utils/            # Utility functions
-├── .env              # Environment variables
-├── index.js          # Main server file
-├── package.json      # Dependencies
-└── README.md         # This file
+├── controllers/        # Request handlers
+├── models/            # Mongoose models
+├── routes/            # API routes
+├── middlewares/       # Custom middleware (auth, validation, upload)
+├── scripts/           # Utility scripts (seed.js)
+├── backend_test/      # Test files
+├── public/            # Static files (uploads)
+├── index.js           # Application entry point
+└── package.json       # Dependencies and scripts
 ```
 
-## Database Schema
+## Error Handling
 
-### User Model
-- `username`: Unique username (3-30 characters)
-- `email`: Unique email address
-- `password`: Hashed password (min 6 characters)
-- `firstName`: First name (2-50 characters)
-- `lastName`: Last name (2-50 characters)
-- `phone`: Phone number
-- `userType`: Either 'buyer' or 'seller'
-- `address`: Delivery address (buyers only)
-- `farmName`: Farm name (sellers only)
-- `farmLocation`: Farm location (sellers only)
-- `city`: City name
-- `isActive`: Account status
-- `avatar`: Profile picture URL
-- `createdAt`: Account creation timestamp
-- `lastLogin`: Last login timestamp
+All API responses follow a consistent format:
 
-## Security Features
-
-- **Password Hashing**: Passwords are hashed using bcryptjs
-- **JWT Tokens**: Secure authentication with configurable expiration
-- **Input Validation**: Comprehensive validation for all inputs
-- **CORS**: Cross-origin resource sharing configuration
-- **Environment Variables**: Sensitive data stored in .env file
-
-## Development
-
-### Running in Development Mode
-```bash
-npm run dev
+### Success Response
+```json
+{
+  "success": true,
+  "message": "Operation successful",
+  "data": {
+    "user": {...},
+    "token": "jwt_token_here",
+    "userType": ["buyer"]
+  }
+}
 ```
 
-### Running in Production Mode
-```bash
-npm start
+### Error Response
+```json
+{
+  "success": false,
+  "message": "Error message",
+  "field": "field_name",
+  "data": {
+    "user": null,
+    "token": null,
+    "userType": null
+  }
+}
 ```
 
-### Environment Variables
+## Common Issues & Solutions
 
-- `MONGODB_URI`: MongoDB connection string
-- `JWT_SECRET`: Secret key for JWT token signing
-- `PORT`: Server port (default: 5000)
-- `NODE_ENV`: Environment (development/production)
+### Issue: Login returns 401 error
+**Solution**: Make sure you've run `npm run seed` to create sample users, or register a new user first.
 
-## Testing
+### Issue: Products endpoint returns 500 error
+**Solution**: Run `npm run seed` to populate the database with sample products and categories.
 
-The backend is ready for testing with tools like:
-- Postman
-- Insomnia
-- curl commands
-- Frontend integration
+### Issue: MongoDB connection error
+**Solution**: 
+1. Make sure MongoDB is running locally, or
+2. Update `MONGODB_URI` in `.env` to point to your MongoDB Atlas cluster
 
-## Deployment
+### Issue: Tests failing
+**Solution**: 
+1. Make sure MongoDB is running
+2. Tests use an in-memory MongoDB, so no setup needed
+3. Run `npm test` again
 
-1. Set `NODE_ENV=production` in your production environment
-2. Use a strong, unique `JWT_SECRET`
-3. Ensure MongoDB is accessible from your production server
-4. Use a process manager like PM2 for production deployment
+## Restarting the Project
+
+When restarting the project after a break:
+
+1. **Start MongoDB** (if using local MongoDB)
+   ```bash
+   # Windows
+   net start MongoDB
+   
+   # Mac/Linux
+   sudo systemctl start mongod
+   ```
+
+2. **Seed the database** (if database is empty)
+   ```bash
+   npm run seed
+   ```
+
+3. **Start the server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Verify everything works**
+   ```bash
+   npm test
+   ```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| PORT | Server port | 5001 |
+| MONGODB_URI | MongoDB connection string | mongodb://localhost:27017/tarkarishop |
+| JWT_SECRET | Secret key for JWT tokens | (required) |
+| NODE_ENV | Environment mode | development |
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+1. Create a new branch for your feature
+2. Make your changes
+3. Run tests: `npm test`
+4. Commit your changes
+5. Push to the branch
+6. Create a Pull Request
 
 ## License
 
-This project is licensed under the ISC License.
+ISC
+
+## Support
+
+For issues or questions, please create an issue in the repository.
