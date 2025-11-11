@@ -15,6 +15,10 @@ router.post('/seller/register', validateSellerRegistration, authController.regis
 router.post('/login', validateLogin, authController.login);
 router.get('/check-user', authController.checkUserExists);
 
+// Password reset routes (public)
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
+
 // Protected routes
 router.get('/profile', auth, authController.getProfile);
 router.put('/profile', auth, authController.updateProfile);
