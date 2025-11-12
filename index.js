@@ -36,6 +36,7 @@ const orderRoutes = require('./routes/order');
 const reviewRoutes = require('./routes/review');
 const feedbackRoutes = require('./routes/feedback');
 const favoriteRoutes = require('./routes/favorite');
+const superadminRoutes = require('./routes/superadmin');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -45,6 +46,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
 app.use('/api/favorites', favoriteRoutes);
+app.use('/api/superadmin', superadminRoutes);
 
 // Simple route
 app.get("/", (req, res) => {
