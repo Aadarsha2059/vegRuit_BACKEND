@@ -471,56 +471,67 @@ const forgotPassword = async (req, res) => {
     // Create reset URL
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
-    // Send email (using nodemailer)
-    const nodemailer = require('nodemailer');
-    
-    // Create transporter
-    const transporter = nodemailer.createTransporter({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: process.env.EMAIL_PORT || 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+    // Check if email configuration is available
+    const emailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
+
+    if (emailConfigured) {
+      // Send email (using nodemailer)
+      const nodemailer = require('nodemailer');
+      
+      try {
+        // Create transporter
+        const transporter = nodemailer.createTransporter({
+          host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+          port: process.env.EMAIL_PORT || 587,
+          secure: false,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
+
+        // Email content
+        const mailOptions = {
+          from: `"Vegruit Support" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: 'Password Reset Request - Vegruit',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #22c55e;">Password Reset Request</h2>
+              <p>Hello ${user.firstName},</p>
+              <p>You requested to reset your password for your Vegruit account.</p>
+              <p>Click the button below to reset your password:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="background-color: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+              </div>
+              <p>Or copy and paste this link into your browser:</p>
+              <p style="color: #666; word-break: break-all;">${resetUrl}</p>
+              <p><strong>This link will expire in 1 hour.</strong></p>
+              <p>If you didn't request this, please ignore this email and your password will remain unchanged.</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+              <p style="color: #999; font-size: 12px;">This is an automated email from Vegruit. Please do not reply to this email.</p>
+            </div>
+          `
+        };
+
+        // Send email
+        await transporter.sendMail(mailOptions);
+        console.log(`[PASSWORD RESET] Email sent to: ${user.email}`);
+      } catch (emailError) {
+        console.error('[PASSWORD RESET] Email send error:', emailError);
+        // Continue anyway - don't reveal email sending issues
       }
-    });
-
-    // Email content
-    const mailOptions = {
-      from: `"Vegruit Support" <${process.env.EMAIL_USER || 'noreply@vegruit.com'}>`,
-      to: user.email,
-      subject: 'Password Reset Request - Vegruit',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #22c55e;">Password Reset Request</h2>
-          <p>Hello ${user.firstName},</p>
-          <p>You requested to reset your password for your Vegruit account.</p>
-          <p>Click the button below to reset your password:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" style="background-color: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
-          </div>
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="color: #666; word-break: break-all;">${resetUrl}</p>
-          <p><strong>This link will expire in 1 hour.</strong></p>
-          <p>If you didn't request this, please ignore this email and your password will remain unchanged.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-          <p style="color: #999; font-size: 12px;">This is an automated email from Vegruit. Please do not reply to this email.</p>
-        </div>
-      `
-    };
-
-    // Send email
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log(`[PASSWORD RESET] Email sent to: ${user.email}`);
-    } catch (emailError) {
-      console.error('[PASSWORD RESET] Email send error:', emailError);
-      // Continue anyway - don't reveal email sending issues
+    } else {
+      // Email not configured - log the reset URL for development
+      console.log(`[PASSWORD RESET] Email not configured. Reset URL for ${user.email}: ${resetUrl}`);
     }
 
     res.json({
       success: true,
-      message: 'If an account with that email exists, a password reset link has been sent.'
+      message: emailConfigured ? 
+        'If an account with that email exists, a password reset link has been sent.' :
+        'Password reset requested. Check server logs for reset link (email not configured).',
+      resetUrl: !emailConfigured ? resetUrl : undefined // Only include URL in response if email not configured
     });
 
   } catch (error) {

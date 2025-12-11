@@ -37,6 +37,8 @@ const reviewRoutes = require('./routes/review');
 const feedbackRoutes = require('./routes/feedback');
 const favoriteRoutes = require('./routes/favorite');
 const superadminRoutes = require('./routes/superadmin');
+const statsRoutes = require('./routes/stats');
+const usersRoutes = require('./routes/users');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -47,6 +49,8 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/superadmin', superadminRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/users', usersRoutes);
 
 // Simple route
 app.get("/", (req, res) => {

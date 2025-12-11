@@ -92,7 +92,14 @@ cartSchema.methods.clear = function() {
 
 // Method to get cart summary
 cartSchema.methods.getSummary = async function() {
-  await this.populate('items.product');
+  // Populate both product and seller information
+  await this.populate({
+    path: 'items.product',
+    populate: {
+      path: 'seller',
+      model: 'User'
+    }
+  });
   
   const summary = {
     totalItems: this.totalItems,
@@ -110,6 +117,12 @@ cartSchema.methods.getSummary = async function() {
         ? item.product.images[0] 
         : '';
       
+      // Get seller information
+      const seller = item.product.seller;
+      const sellerName = seller ? `${seller.firstName} ${seller.lastName}` : 'Unknown Seller';
+      const farmName = seller ? seller.farmName : '';
+      const farmLocation = seller ? seller.farmLocation : '';
+      
       summary.items.push({
         productId: item.product._id,
         productName: item.product.name,
@@ -120,7 +133,9 @@ cartSchema.methods.getSummary = async function() {
         price: item.product.price,
         total: itemTotal,
         seller: item.product.seller,
-        sellerName: item.product.sellerName || 'Unknown Seller',
+        sellerName: sellerName,
+        farmName: farmName,
+        farmLocation: farmLocation,
         description: item.product.description || '',
         category: item.product.category
       });
