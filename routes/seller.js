@@ -488,7 +488,7 @@ router.get('/earnings', auth, requireUserType('seller'), async (req, res) => {
   }
 });
 
-// Get seller customers
+// Get seller customer
 router.get('/customers', auth, requireUserType('seller'), async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
