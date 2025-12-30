@@ -436,25 +436,38 @@ const checkUserExists = async (req, res) => {
 // Forgot Password - Request password reset
 const forgotPassword = async (req, res) => {
   try {
+    console.log('[PASSWORD RESET] 📥 Request received');
     const { email } = req.body;
 
     if (!email) {
+      console.log('[PASSWORD RESET] ❌ No email provided');
       return res.status(400).json({
         success: false,
         message: 'Email is required'
       });
     }
 
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    console.log(`[PASSWORD RESET] 🔍 Looking for user with email: ${email.toLowerCase().trim()}`);
+
+    // Find user by email - must be registered as buyer or seller
+    const user = await User.findOne({ 
+      email: email.toLowerCase().trim(),
+      $or: [
+        { isBuyer: true },
+        { isSeller: true }
+      ]
+    });
 
     if (!user) {
-      // Don't reveal if user exists or not for security
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.'
+      // Email is not registered as buyer or seller
+      console.log(`[PASSWORD RESET] ❌ User not found: ${email}`);
+      return res.status(404).json({
+        success: false,
+        message: 'This email is not registered. Please enter a valid registered email address.'
       });
     }
+
+    console.log(`[PASSWORD RESET] ✅ User found: ${user.email} (${user.firstName} ${user.lastName})`);
 
     // Generate reset token
     const crypto = require('crypto');
@@ -474,71 +487,213 @@ const forgotPassword = async (req, res) => {
     // Check if email configuration is available
     const emailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
 
-    if (emailConfigured) {
-      // Send email (using nodemailer)
+    console.log(`[PASSWORD RESET] 📧 Email configuration check:`);
+    console.log(`[PASSWORD RESET]   EMAIL_USER: ${process.env.EMAIL_USER ? '✅ Set' : '❌ Not set'}`);
+    console.log(`[PASSWORD RESET]   EMAIL_PASS: ${process.env.EMAIL_PASS ? '✅ Set' : '❌ Not set'}`);
+
+    if (!emailConfigured) {
+      // Email not configured - return error
+      console.log(`[PASSWORD RESET] ❌ Email not configured. Cannot send reset link to ${user.email}`);
+      console.log('[PASSWORD RESET] Please configure EMAIL_USER and EMAIL_PASS in your .env file.');
+      console.log('[PASSWORD RESET] For Gmail, use App Password: https://support.google.com/accounts/answer/185833');
+      
+      return res.status(500).json({
+        success: false,
+        message: 'Email service is not configured. Please contact support for password reset assistance.'
+      });
+    }
+
+    // Send email (using nodemailer)
+    try {
+      console.log('[PASSWORD RESET] 📧 Initializing nodemailer...');
       const nodemailer = require('nodemailer');
       
-      try {
-        // Create transporter
-        const transporter = nodemailer.createTransporter({
-          host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-          port: process.env.EMAIL_PORT || 587,
-          secure: false,
+      // Determine email provider and configure accordingly
+      const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
+      const emailPort = parseInt(process.env.EMAIL_PORT) || 587;
+      const isGmail = emailHost.includes('gmail.com');
+      
+      console.log(`[PASSWORD RESET] 📧 Email provider: ${isGmail ? 'Gmail' : 'Custom SMTP'}`);
+      
+      // Create transporter with Gmail service (simplified and more reliable)
+      let transporter;
+      
+      if (isGmail) {
+        // Use Gmail service - this is the most reliable method
+        console.log('[PASSWORD RESET] 📧 Creating Gmail transporter...');
+        transporter = nodemailer.createTransport({
+          service: 'gmail',
           auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS
           }
         });
-
-        // Email content
-        const mailOptions = {
-          from: `"Vegruit Support" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: 'Password Reset Request - Vegruit',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #22c55e;">Password Reset Request</h2>
-              <p>Hello ${user.firstName},</p>
-              <p>You requested to reset your password for your Vegruit account.</p>
-              <p>Click the button below to reset your password:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" style="background-color: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
-              </div>
-              <p>Or copy and paste this link into your browser:</p>
-              <p style="color: #666; word-break: break-all;">${resetUrl}</p>
-              <p><strong>This link will expire in 1 hour.</strong></p>
-              <p>If you didn't request this, please ignore this email and your password will remain unchanged.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-              <p style="color: #999; font-size: 12px;">This is an automated email from Vegruit. Please do not reply to this email.</p>
-            </div>
-          `
-        };
-
-        // Send email
-        await transporter.sendMail(mailOptions);
-        console.log(`[PASSWORD RESET] Email sent to: ${user.email}`);
-      } catch (emailError) {
-        console.error('[PASSWORD RESET] Email send error:', emailError);
-        // Continue anyway - don't reveal email sending issues
+        console.log('[PASSWORD RESET] ✅ Gmail transporter created');
+      } else {
+        // For other email providers
+        console.log(`[PASSWORD RESET] 📧 Creating custom SMTP transporter (${emailHost}:${emailPort})...`);
+        transporter = nodemailer.createTransport({
+          host: emailHost,
+          port: emailPort,
+          secure: emailPort === 465,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+        console.log('[PASSWORD RESET] ✅ Custom SMTP transporter created');
       }
-    } else {
-      // Email not configured - log the reset URL for development
-      console.log(`[PASSWORD RESET] Email not configured. Reset URL for ${user.email}: ${resetUrl}`);
+
+      // Verify transporter configuration (optional - skip if it fails)
+      try {
+        await Promise.race([
+          transporter.verify(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP verification timeout')), 10000))
+        ]);
+        console.log('[EMAIL] ✅ SMTP configuration verified successfully');
+      } catch (verifyError) {
+        console.warn('[EMAIL] ⚠️ SMTP verification failed or timed out:', verifyError.message);
+        // Continue anyway - some SMTP servers don't support verify or are slow
+        // This is not critical, we'll try to send anyway
+      }
+
+      // For testing: Send all emails to test address (remove this in production)
+      const testEmailAddress = 'dhakalaadarshababu20590226@gmail.com';
+      const recipientEmail = process.env.NODE_ENV === 'production' ? user.email : testEmailAddress;
+      
+      console.log(`[PASSWORD RESET] Sending email to: ${recipientEmail} (original: ${user.email})`);
+
+      // Email content
+      const mailOptions = {
+        from: `"Vegruit Support" <${process.env.EMAIL_USER}>`,
+        to: recipientEmail,
+        subject: 'Password Reset Request - Vegruit',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #22c55e; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0;">Vegruit</h1>
+            </div>
+            <div style="background-color: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
+              <h2 style="color: #1f2937; margin-top: 0;">Password Reset Request</h2>
+              <p style="color: #4b5563; font-size: 16px;">Hello ${user.firstName},</p>
+              <p style="color: #4b5563; font-size: 16px;">You requested to reset your password for your Vegruit account.</p>
+              <p style="color: #4b5563; font-size: 16px;">Click the button below to reset your password:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="background-color: #22c55e; color: white; padding: 14px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; font-size: 16px;">Reset Password</a>
+              </div>
+              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">Or copy and paste this link into your browser:</p>
+              <p style="color: #4b5563; word-break: break-all; font-size: 12px; background-color: #e5e7eb; padding: 10px; border-radius: 5px;">${resetUrl}</p>
+              <p style="color: #dc2626; font-weight: bold; margin-top: 20px;"><strong>⚠️ This link will expire in 1 hour.</strong></p>
+              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">If you didn't request this password reset, please ignore this email and your password will remain unchanged.</p>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+              <p style="color: #9ca3af; font-size: 12px; text-align: center;">This is an automated email from Vegruit. Please do not reply to this email.</p>
+            </div>
+          </div>
+        `,
+        // Plain text version for email clients that don't support HTML
+        text: `
+Password Reset Request - Vegruit
+
+Hello ${user.firstName},
+
+You requested to reset your password for your Vegruit account.
+
+Click the link below to reset your password:
+${resetUrl}
+
+This link will expire in 1 hour.
+
+If you didn't request this password reset, please ignore this email and your password will remain unchanged.
+
+This is an automated email from Vegruit. Please do not reply to this email.
+        `
+      };
+
+      // Send email (with timeout - 30 seconds for slow connections)
+      console.log(`[PASSWORD RESET] 📧 Attempting to send email...`);
+      const info = await Promise.race([
+        transporter.sendMail(mailOptions),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email send timeout after 30 seconds')), 30000))
+      ]);
+      
+      console.log(`[PASSWORD RESET] ✅ Email sent successfully!`);
+      console.log(`[PASSWORD RESET] 📬 Sent to: ${recipientEmail}`);
+      console.log(`[PASSWORD RESET] 📧 Message ID: ${info.messageId}`);
+      console.log(`[PASSWORD RESET] ✅ Response: ${info.response}`);
+      
+      // Return success response - link sent via email only
+      return res.json({
+        success: true,
+        message: 'Password reset link has been sent to your registered email address.'
+      });
+      
+    } catch (emailError) {
+      // Detailed error logging
+      console.error('[PASSWORD RESET] ❌ Email send error occurred');
+      console.error('[PASSWORD RESET] Error message:', emailError.message);
+      console.error('[PASSWORD RESET] Error code:', emailError.code);
+      console.error('[PASSWORD RESET] Error command:', emailError.command);
+      console.error('[PASSWORD RESET] Error response:', emailError.response);
+      
+      // Check error message and response for Gmail limit (check both message and response)
+      const errorMessageText = (emailError.message || '').toLowerCase();
+      const errorResponseText = (emailError.response || '').toLowerCase();
+      const combinedErrorText = errorMessageText + ' ' + errorResponseText;
+      
+      const isGmailLimitError = combinedErrorText.includes('daily user sending limit exceeded') ||
+                                combinedErrorText.includes('sending limit exceeded') ||
+                                combinedErrorText.includes('550-5.4.5') ||
+                                combinedErrorText.includes('daily sending limit') ||
+                                (errorResponseText.includes('550') && errorResponseText.includes('limit'));
+      
+      // Provide helpful error messages based on error type
+      let errorMessage = 'Failed to send password reset email. Please try again later or contact support.';
+      
+      if (isGmailLimitError) {
+        errorMessage = 'Gmail daily sending limit exceeded. Please try again tomorrow or contact support for assistance.';
+        console.error('[PASSWORD RESET] 📧 Gmail daily sending limit exceeded');
+        console.error('[PASSWORD RESET] 💡 Solution: Wait 24 hours or use a different email service');
+      } else if (emailError.code === 'EAUTH') {
+        errorMessage = 'Email authentication failed. Please check your email credentials.';
+        console.error('[PASSWORD RESET] 🔐 Authentication failed - check EMAIL_USER and EMAIL_PASS in .env');
+      } else if (emailError.code === 'ECONNECTION' || emailError.code === 'ETIMEDOUT') {
+        errorMessage = 'Could not connect to email server. Please check your internet connection and try again.';
+        console.error('[PASSWORD RESET] 🌐 Connection failed - check network and email server settings');
+      } else if (emailError.message && emailError.message.includes('timeout')) {
+        errorMessage = 'Email server connection timed out. Please try again later.';
+        console.error('[PASSWORD RESET] ⏱️ Timeout occurred');
+      } else if (emailError.code === 'EENVELOPE' && !isGmailLimitError) {
+        errorMessage = 'Invalid email address. Please contact support.';
+        console.error('[PASSWORD RESET] 📧 Invalid email address');
+      } else {
+        console.error('[PASSWORD RESET] ❓ Unknown error:', emailError);
+        // Log the full response for debugging
+        if (emailError.response) {
+          console.error('[PASSWORD RESET] Full error response:', emailError.response);
+        }
+      }
+      
+      // Return error - email failed to send
+      return res.status(500).json({
+        success: false,
+        message: errorMessage
+      });
     }
 
-    res.json({
-      success: true,
-      message: emailConfigured ? 
-        'If an account with that email exists, a password reset link has been sent.' :
-        'Password reset requested. Check server logs for reset link (email not configured).',
-      resetUrl: !emailConfigured ? resetUrl : undefined // Only include URL in response if email not configured
-    });
-
   } catch (error) {
-    console.error('Forgot password error:', error);
+    console.error('[PASSWORD RESET] ❌❌❌ UNEXPECTED ERROR ❌❌❌');
+    console.error('[PASSWORD RESET] Error type:', error.constructor.name);
+    console.error('[PASSWORD RESET] Error message:', error.message);
+    console.error('[PASSWORD RESET] Error stack:', error.stack);
+    console.error('[PASSWORD RESET] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    
     res.status(500).json({
       success: false,
-      message: 'Server error. Please try again later.'
+      message: 'Server error. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

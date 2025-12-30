@@ -3,6 +3,178 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const User = require('../models/User');
 
+// Send order confirmation email to buyer
+const sendOrderConfirmationEmail = async (order) => {
+  try {
+    const emailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
+    
+    if (emailConfigured) {
+      const nodemailer = require('nodemailer');
+      
+      // Create transporter
+      const transporter = nodemailer.createTransporter({
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: process.env.EMAIL_PORT || 587,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+
+      // Create order items list for email
+      const itemsList = order.items.map(item => `
+        <tr>
+          <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.productName}</td>
+          <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity} ${item.unit}</td>
+          <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">₹${item.price}</td>
+          <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">₹${item.total}</td>
+        </tr>
+      `).join('');
+
+      // Email content
+      const mailOptions = {
+        from: `"Vegruit Order Confirmation" <${process.env.EMAIL_USER}>`,
+        to: order.buyerEmail,
+        subject: `Order Confirmation - ${order.orderNumber}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px;">
+            <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h2 style="color: #22c55e; text-align: center; margin-top: 0;">Order Confirmation</h2>
+              <p>Hello ${order.buyerName},</p>
+              <p>Your order <strong>${order.orderNumber}</strong> has been successfully placed.</p>
+              
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #333;">Order Details</h3>
+                <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+                <p><strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+                <p><strong>Status:</strong> <span style="color: #22c55e; font-weight: bold;">${order.status}</span></p>
+                <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
+              </div>
+              
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <thead>
+                  <tr style="background: #22c55e; color: white;">
+                    <th style="padding: 12px; text-align: left;">Item</th>
+                    <th style="padding: 12px; text-align: center;">Quantity</th>
+                    <th style="padding: 12px; text-align: right;">Price</th>
+                    <th style="padding: 12px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsList}
+                </tbody>
+              </table>
+              
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h4 style="margin-top: 0; color: #333;">Price Summary</h4>
+                <p style="margin: 8px 0;"><strong>Subtotal:</strong> <span style="float: right;">₹${order.subtotal}</span></p>
+                <p style="margin: 8px 0;"><strong>Delivery Fee:</strong> <span style="float: right;">₹${order.deliveryFee}</span></p>
+                <p style="margin: 8px 0;"><strong>Tax:</strong> <span style="float: right;">₹${order.tax}</span></p>
+                <p style="margin: 8px 0; border-top: 1px solid #ddd; padding-top: 10px;"><strong>Total:</strong> <span style="float: right; font-weight: bold;">₹${order.total}</span></p>
+              </div>
+              
+              <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h4 style="margin-top: 0; color: #22c55e;">Delivery Address</h4>
+                <p style="margin: 5px 0;">${order.deliveryAddress.street}</p>
+                <p style="margin: 5px 0;">${order.deliveryAddress.city}, ${order.deliveryAddress.state}</p>
+                <p style="margin: 5px 0;">${order.deliveryAddress.postalCode}, ${order.deliveryAddress.country}</p>
+                ${order.deliveryInstructions ? `<p style="margin: 5px 0;"><strong>Instructions:</strong> ${order.deliveryInstructions}</p>` : ''}
+              </div>
+              
+              <p>Thank you for ordering with Vegruit! You will receive updates on your order status via email.</p>
+              <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated email from Vegruit. Please do not reply to this email.</p>
+            </div>
+          </div>
+        `
+      };
+
+      // Send email
+      await transporter.sendMail(mailOptions);
+      console.log(`[ORDER CONFIRMATION] Email sent to: ${order.buyerEmail}`);
+    } else {
+      console.log(`[ORDER CONFIRMATION] Email not configured. Order details for ${order.buyerEmail}: ${order.orderNumber}`);
+    }
+  } catch (error) {
+    console.error('[ORDER CONFIRMATION] Email send error:', error);
+  }
+};
+
+// Send order status update email to buyer
+const sendOrderStatusUpdateEmail = async (order, oldStatus) => {
+  try {
+    const emailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
+    
+    if (emailConfigured) {
+      const nodemailer = require('nodemailer');
+      
+      // Create transporter
+      const transporter = nodemailer.createTransporter({
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: process.env.EMAIL_PORT || 587,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+
+      // Status-specific messages
+      const statusMessages = {
+        'pending': 'Your order has been placed and is pending confirmation.',
+        'confirmed': 'Your order has been confirmed and will be processed shortly.',
+        'processing': 'Your order is being processed by the seller.',
+        'shipped': 'Your order has been shipped and is on the way to you.',
+        'delivered': 'Your order has been delivered. You can now confirm receipt.',
+        'received': 'Your order has been marked as received.',
+        'cancelled': 'Your order has been cancelled.',
+        'rejected': 'Your order has been rejected by the seller.'
+      };
+
+      // Email content
+      const mailOptions = {
+        from: `"Vegruit Order Update" <${process.env.EMAIL_USER}>`,
+        to: order.buyerEmail,
+        subject: `Order Status Update - ${order.orderNumber}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px;">
+            <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h2 style="color: #22c55e; text-align: center; margin-top: 0;">Order Status Update</h2>
+              <p>Hello ${order.buyerName},</p>
+              <p>The status of your order <strong>${order.orderNumber}</strong> has been updated from <strong>${oldStatus}</strong> to <strong>${order.status}</strong>.</p>
+              
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0; text-align: center; font-size: 16px; color: #22c55e; font-weight: bold;">
+                  ${statusMessages[order.status] || `Your order status is now: ${order.status}`}
+                </p>
+              </div>
+              
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #333;">Order Summary</h3>
+                <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+                <p><strong>Current Status:</strong> <span style="color: #22c55e; font-weight: bold;">${order.status}</span></p>
+                <p><strong>Total Amount:</strong> ₹${order.total}</p>
+                <p><strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+              </div>
+              
+              <p>You can track your order status by logging into your Vegruit account.</p>
+              <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated email from Vegruit. Please do not reply to this email.</p>
+            </div>
+          </div>
+        `
+      };
+
+      // Send email
+      await transporter.sendMail(mailOptions);
+      console.log(`[ORDER STATUS UPDATE] Email sent to: ${order.buyerEmail}`);
+    } else {
+      console.log(`[ORDER STATUS UPDATE] Email not configured. Order status update for ${order.buyerEmail}: ${order.orderNumber} - ${oldStatus} → ${order.status}`);
+    }
+  } catch (error) {
+    console.error('[ORDER STATUS UPDATE] Email send error:', error);
+  }
+};
+
 // ========================
 // Confirm Order Receipt (buyer only)
 // ========================
@@ -198,6 +370,9 @@ const createOrder = async (req, res) => {
 
     await cart.clear();
 
+    // Send order confirmation email to buyer
+    await sendOrderConfirmationEmail(savedOrder);
+
     res.status(201).json({
       success: true,
       data: { order: savedOrder },
@@ -359,7 +534,11 @@ const acceptOrder = async (req, res) => {
       });
     }
 
+    const oldStatus = order.status;
     await order.updateStatus('confirmed');
+    
+    // Send status update email to buyer
+    await sendOrderStatusUpdateEmail(order, oldStatus);
 
     res.json({
       success: true,
@@ -396,7 +575,11 @@ const rejectOrder = async (req, res) => {
       });
     }
 
+    const oldStatus = order.status;
     await order.updateStatus('rejected', reason);
+    
+    // Send status update email to buyer
+    await sendOrderStatusUpdateEmail(order, oldStatus);
 
     res.json({
       success: true,
@@ -432,7 +615,11 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
+    const oldStatus = order.status;
     await order.updateStatus(status);
+    
+    // Send status update email to buyer
+    await sendOrderStatusUpdateEmail(order, oldStatus);
 
     res.json({
       success: true,
@@ -469,7 +656,11 @@ const cancelOrder = async (req, res) => {
       });
     }
 
+    const oldStatus = order.status;
     await order.updateStatus('cancelled', reason);
+    
+    // Send status update email to buyer
+    await sendOrderStatusUpdateEmail(order, oldStatus);
 
     res.json({
       success: true,
